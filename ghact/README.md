@@ -82,3 +82,7 @@ ghact --if approved merge 42
 # In a specific repo, after 90 minutes, add a comment
 ghact --after 90m --repo bazelbuild/bazel add-comment 123 "Triggered nightly run"
 ```
+
+## Notes
+
+It's all Claude code. Use at your own risk.
