@@ -1,0 +1,42 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+py_library(
+    name = "timing",
+    srcs = ["timing.py"],
+)
+
+py_library(
+    name = "conditions",
+    srcs = ["conditions.py"],
+)
+
+py_library(
+    name = "actions",
+    srcs = ["actions.py"],
+)
+
+py_binary(
+    name = "ghact",
+    srcs = [
+        "ghact.py",
+    ],
+    main = "ghact.py",
+    deps = [
+        ":actions",
+        ":conditions",
+        ":timing",
+    ],
+)
+
+py_test(
+    name = "ghact_test",
+    srcs = [
+        "ghact_test.py",
+    ],
+    deps = [
+        ":actions",
+        ":conditions",
+        ":ghact",
+        ":timing",
+    ],
+)
