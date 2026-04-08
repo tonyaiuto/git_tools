@@ -45,8 +45,8 @@ ghact [--at TIME | --after DURATION] [--if CONDITION] [--repo OWNER/REPO]
 |---|---|
 | `approved` | PR has an approving review and no blocking changes-requested |
 | `unapproved` | PR has not been approved |
-| `ci-passing` | All required status checks are green |
-| `ci-failing` | At least one required status check is not green |
+| `passing` | All required status checks are green |
+| `failing` | At least one required status check is not green |
 | `draft` | PR is in draft state |
 | `ready` | PR is not a draft |
 | `mergeable` | PR is approved and CI is passing |

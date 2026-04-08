@@ -119,7 +119,7 @@ class TestCheckCondition(unittest.TestCase):
             {'conclusion': 'SUCCESS'},
             {'conclusion': 'SKIPPED'},
         ]}
-        self.assertTrue(conditions.check_condition('ci-passing', 42))
+        self.assertTrue(conditions.check_condition('passing', 42))
 
     @patch('conditions._gh')
     def test_ci_passing_one_failure(self, mock_gh):
@@ -127,12 +127,12 @@ class TestCheckCondition(unittest.TestCase):
             {'conclusion': 'SUCCESS'},
             {'conclusion': 'FAILURE'},
         ]}
-        self.assertFalse(conditions.check_condition('ci-passing', 42))
+        self.assertFalse(conditions.check_condition('passing', 42))
 
     @patch('conditions._gh')
     def test_ci_passing_no_checks_is_false(self, mock_gh):
         mock_gh.return_value = {'statusCheckRollup': []}
-        self.assertFalse(conditions.check_condition('ci-passing', 42))
+        self.assertFalse(conditions.check_condition('passing', 42))
 
     @patch('conditions._gh')
     def test_draft(self, mock_gh):

@@ -7,8 +7,8 @@ import subprocess
 KNOWN_CONDITIONS = frozenset({
     'approved',
     'unapproved',
-    'ci-passing',
-    'ci-failing',
+    'passing',
+    'failing',
     'draft',
     'ready',
     'mergeable',
@@ -25,9 +25,9 @@ def check_condition(condition, pr, repo=None):
         return _is_approved(pr, repo)
     elif condition == 'unapproved':
         return not _is_approved(pr, repo)
-    elif condition == 'ci-passing':
+    elif condition == 'passing':
         return _is_ci_passing(pr, repo)
-    elif condition == 'ci-failing':
+    elif condition == 'failing':
         return not _is_ci_passing(pr, repo)
     elif condition == 'draft':
         return _is_draft(pr, repo)

@@ -4,8 +4,7 @@ test:
 	$(BZL) test ...
 
 try:	install
-	ghact --if 
-
+	ghact --if ready add-comment 1 ready
 
 install:
 	$(BZL) build :ghact --build_python_zip
