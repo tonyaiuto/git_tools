@@ -1,9 +1,14 @@
+BZL=bazelisk
 
 test:
-	bazel test ...
+	$(BZL) test ...
+
+try:	install
+	ghact --if 
+
 
 install:
-	bazel build :ghact --build_python_zip
+	$(BZL) build :ghact --build_python_zip
 	cp -f bazel-bin/ghact $(HOME)/bin
 
 clean:
