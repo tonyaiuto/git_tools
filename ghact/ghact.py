@@ -66,6 +66,9 @@ def build_parser():
     p = sub.add_parser('close', help='Close a PR')
     p.add_argument('pr', type=int, metavar='PR')
 
+    p = sub.add_parser('pr', help='Check --if condition; exit 0 if true, 1 if false')
+    p.add_argument('pr', type=int, metavar='PR')
+
     return parser
 
 
@@ -89,8 +92,20 @@ def main(argv=None):
     if target_time:
         timing.sleep_until(target_time)
 
-    # ── Check condition ───────────────────────────────────────────────────────
+    # ── pr subcommand: check condition, exit 0/1, no output ──────────────────
     pr = args.pr
+    if args.command == 'pr':
+        if not args.condition:
+            parser.error("'pr' command requires --if CONDITION")
+        try:
+            met = conditions.check_condition(args.condition, pr, args.repo)
+        except ValueError as e:
+            parser.error(str(e))
+        except RuntimeError:
+            sys.exit(1)
+        sys.exit(0 if met else 1)
+
+    # ── Check condition ───────────────────────────────────────────────────────
     if args.condition:
         try:
             met = conditions.check_condition(args.condition, pr, args.repo)

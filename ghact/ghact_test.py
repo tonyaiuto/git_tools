@@ -195,5 +195,41 @@ class TestMain(unittest.TestCase):
         mock_add.assert_called_once_with(5, 'foo', 'owner/repo')
 
 
+# ── pr subcommand ─────────────────────────────────────────────────────────────
+
+class TestPrCommand(unittest.TestCase):
+
+    @patch('conditions.check_condition', return_value=True)
+    def test_condition_true_exits_0(self, mock_cond):
+        import ghact
+        with self.assertRaises(SystemExit) as cm:
+            ghact.main(['--if', 'approved', 'pr', '42'])
+        self.assertEqual(cm.exception.code, 0)
+
+    @patch('conditions.check_condition', return_value=False)
+    def test_condition_false_exits_1(self, mock_cond):
+        import ghact
+        with self.assertRaises(SystemExit) as cm:
+            ghact.main(['--if', 'approved', 'pr', '42'])
+        self.assertEqual(cm.exception.code, 1)
+
+    @patch('conditions.check_condition', return_value=True)
+    def test_no_output(self, mock_cond):
+        import ghact
+        import io
+        with self.assertRaises(SystemExit):
+            with patch('sys.stdout', new_callable=io.StringIO) as mock_out, \
+                 patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+                ghact.main(['--if', 'approved', 'pr', '42'])
+                self.assertEqual(mock_out.getvalue(), '')
+                self.assertEqual(mock_err.getvalue(), '')
+
+    def test_missing_condition_is_error(self):
+        import ghact
+        with self.assertRaises(SystemExit) as cm:
+            ghact.main(['pr', '42'])
+        self.assertNotEqual(cm.exception.code, 0)
+
+
 if __name__ == '__main__':
     unittest.main()
