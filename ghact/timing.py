@@ -63,16 +63,17 @@ def parse_after(duration_str):
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
-def sleep_until(target):
-    """Sleep until target datetime, printing a status message."""
+def sleep_until(target, verbose=False):
+    """Sleep until target datetime, optionally printing a status message."""
     delta = (target - datetime.now()).total_seconds()
     if delta <= 0:
         return
-    print(
-        f"Sleeping until {target.strftime('%Y-%m-%d %H:%M:%S')} "
-        f"({delta / 60:.1f} min from now)...",
-        file=sys.stderr,
-    )
+    if verbose:
+        print(
+            f"Sleeping until {target.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"({delta / 60:.1f} min from now)...",
+            file=sys.stderr,
+        )
     time.sleep(delta)
 
 

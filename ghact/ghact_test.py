@@ -1,7 +1,8 @@
 """Tests for ghact."""
 
+import json
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch, call
 
 import timing
@@ -86,6 +87,27 @@ class TestParseAfter(unittest.TestCase):
             timing.parse_after('')
 
 
+# ── timing.sleep_until ────────────────────────────────────────────────────────
+
+class TestSleepUntil(unittest.TestCase):
+
+    @patch('time.sleep')
+    def test_silent_by_default(self, mock_sleep):
+        import io
+        future = datetime.now() + timedelta(seconds=60)
+        with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+            timing.sleep_until(future)
+        self.assertEqual(mock_err.getvalue(), '')
+
+    @patch('time.sleep')
+    def test_verbose_prints(self, mock_sleep):
+        import io
+        future = datetime.now() + timedelta(seconds=60)
+        with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+            timing.sleep_until(future, verbose=True)
+        self.assertIn('Sleeping until', mock_err.getvalue())
+
+
 # ── conditions.check_condition ───────────────────────────────────────────────
 
 class TestCheckCondition(unittest.TestCase):
@@ -119,7 +141,7 @@ class TestCheckCondition(unittest.TestCase):
             {'conclusion': 'SUCCESS'},
             {'conclusion': 'SKIPPED'},
         ]}
-        self.assertTrue(conditions.check_condition('ci-passing', 42))
+        self.assertTrue(conditions.check_condition('passing', 42))
 
     @patch('conditions._gh')
     def test_ci_passing_one_failure(self, mock_gh):
@@ -127,12 +149,12 @@ class TestCheckCondition(unittest.TestCase):
             {'conclusion': 'SUCCESS'},
             {'conclusion': 'FAILURE'},
         ]}
-        self.assertFalse(conditions.check_condition('ci-passing', 42))
+        self.assertFalse(conditions.check_condition('passing', 42))
 
     @patch('conditions._gh')
     def test_ci_passing_no_checks_is_false(self, mock_gh):
         mock_gh.return_value = {'statusCheckRollup': []}
-        self.assertFalse(conditions.check_condition('ci-passing', 42))
+        self.assertFalse(conditions.check_condition('passing', 42))
 
     @patch('conditions._gh')
     def test_draft(self, mock_gh):
@@ -155,6 +177,93 @@ class TestCheckCondition(unittest.TestCase):
         mock_gh.assert_called_once_with(
             ['pr', 'view', '7', '--json', 'reviewDecision'], 'owner/repo'
         )
+
+    @patch('conditions._has_unresolved_threads', return_value=False)
+    def test_no_unresolved_threads_true(self, mock_threads):
+        self.assertTrue(conditions.check_condition('no-unresolved-threads', 42))
+        mock_threads.assert_called_once_with(42, None)
+
+    @patch('conditions._has_unresolved_threads', return_value=True)
+    def test_no_unresolved_threads_false(self, mock_threads):
+        self.assertFalse(conditions.check_condition('no-unresolved-threads', 42))
+
+    @patch('conditions._has_unresolved_threads')
+    @patch('conditions._is_ci_passing')
+    @patch('conditions._is_approved')
+    def test_ready_to_merge_all_true(self, mock_approved, mock_ci, mock_threads):
+        mock_approved.return_value = True
+        mock_ci.return_value = True
+        mock_threads.return_value = False
+        self.assertTrue(conditions.check_condition('ready-to-merge', 42))
+
+    @patch('conditions._has_unresolved_threads')
+    @patch('conditions._is_ci_passing')
+    @patch('conditions._is_approved')
+    def test_ready_to_merge_unapproved(self, mock_approved, mock_ci, mock_threads):
+        mock_approved.return_value = False
+        mock_ci.return_value = True
+        mock_threads.return_value = False
+        self.assertFalse(conditions.check_condition('ready-to-merge', 42))
+
+    @patch('conditions._has_unresolved_threads')
+    @patch('conditions._is_ci_passing')
+    @patch('conditions._is_approved')
+    def test_ready_to_merge_unresolved_threads(self, mock_approved, mock_ci, mock_threads):
+        mock_approved.return_value = True
+        mock_ci.return_value = True
+        mock_threads.return_value = True
+        self.assertFalse(conditions.check_condition('ready-to-merge', 42))
+
+
+
+# ── conditions._has_unresolved_threads ───────────────────────────────────────
+
+class TestHasUnresolvedThreads(unittest.TestCase):
+
+    def _graphql_response(self, threads):
+        return json.dumps({
+            'data': {'repository': {'pullRequest': {
+                'reviewThreads': {'nodes': threads}
+            }}}
+        })
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_no_threads(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(0, self._graphql_response([]))
+        self.assertFalse(conditions._has_unresolved_threads(42, 'owner/repo'))
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_all_resolved(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(0, self._graphql_response([
+            {'isResolved': True},
+            {'isResolved': True},
+        ]))
+        self.assertFalse(conditions._has_unresolved_threads(42, 'owner/repo'))
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_one_unresolved(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(0, self._graphql_response([
+            {'isResolved': True},
+            {'isResolved': False},
+        ]))
+        self.assertTrue(conditions._has_unresolved_threads(42, 'owner/repo'))
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_graphql_failure_raises(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(1, '', 'some error')
+        with self.assertRaises(RuntimeError):
+            conditions._has_unresolved_threads(42, 'owner/repo')
+
+
+class _FakeResult:
+    def __init__(self, returncode, stdout='', stderr=''):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 # ── ghact main (CLI integration) ─────────────────────────────────────────────
@@ -193,6 +302,42 @@ class TestMain(unittest.TestCase):
         import ghact
         ghact.main(['--repo', 'owner/repo', 'add-label', '5', 'foo'])
         mock_add.assert_called_once_with(5, 'foo', 'owner/repo')
+
+
+# ── pr subcommand ─────────────────────────────────────────────────────────────
+
+class TestPrCommand(unittest.TestCase):
+
+    @patch('conditions.check_condition', return_value=True)
+    def test_condition_true_exits_0(self, mock_cond):
+        import ghact
+        with self.assertRaises(SystemExit) as cm:
+            ghact.main(['--if', 'approved', 'pr', '42'])
+        self.assertEqual(cm.exception.code, 0)
+
+    @patch('conditions.check_condition', return_value=False)
+    def test_condition_false_exits_1(self, mock_cond):
+        import ghact
+        with self.assertRaises(SystemExit) as cm:
+            ghact.main(['--if', 'approved', 'pr', '42'])
+        self.assertEqual(cm.exception.code, 1)
+
+    @patch('conditions.check_condition', return_value=True)
+    def test_no_output(self, mock_cond):
+        import ghact
+        import io
+        with self.assertRaises(SystemExit):
+            with patch('sys.stdout', new_callable=io.StringIO) as mock_out, \
+                 patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+                ghact.main(['--if', 'approved', 'pr', '42'])
+                self.assertEqual(mock_out.getvalue(), '')
+                self.assertEqual(mock_err.getvalue(), '')
+
+    def test_missing_condition_is_error(self):
+        import ghact
+        with self.assertRaises(SystemExit) as cm:
+            ghact.main(['pr', '42'])
+        self.assertNotEqual(cm.exception.code, 0)
 
 
 if __name__ == '__main__':
