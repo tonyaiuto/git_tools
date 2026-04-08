@@ -1,7 +1,7 @@
 """Tests for ghact."""
 
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch, call
 
 import timing
@@ -84,6 +84,27 @@ class TestParseAfter(unittest.TestCase):
         # An empty match is not useful
         with self.assertRaises(ValueError):
             timing.parse_after('')
+
+
+# ── timing.sleep_until ────────────────────────────────────────────────────────
+
+class TestSleepUntil(unittest.TestCase):
+
+    @patch('time.sleep')
+    def test_silent_by_default(self, mock_sleep):
+        import io
+        future = datetime.now() + timedelta(seconds=60)
+        with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+            timing.sleep_until(future)
+        self.assertEqual(mock_err.getvalue(), '')
+
+    @patch('time.sleep')
+    def test_verbose_prints(self, mock_sleep):
+        import io
+        future = datetime.now() + timedelta(seconds=60)
+        with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+            timing.sleep_until(future, verbose=True)
+        self.assertIn('Sleeping until', mock_err.getvalue())
 
 
 # ── conditions.check_condition ───────────────────────────────────────────────

@@ -43,6 +43,10 @@ def build_parser():
         '--repo', metavar='OWNER/REPO',
         help='GitHub repository (default: repo in current directory)',
     )
+    parser.add_argument(
+        '-v', '--verbose', action='store_true',
+        help='Print status messages (e.g. sleep notifications)',
+    )
 
     # ── Subcommands ───────────────────────────────────────────────────────────
     sub = parser.add_subparsers(dest='command', metavar='command')
@@ -90,7 +94,7 @@ def main(argv=None):
             parser.error(str(e))
 
     if target_time:
-        timing.sleep_until(target_time)
+        timing.sleep_until(target_time, verbose=args.verbose)
 
     # ── pr subcommand: check condition, exit 0/1, no output ──────────────────
     pr = args.pr
