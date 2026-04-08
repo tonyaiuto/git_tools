@@ -1,5 +1,6 @@
 """Tests for ghact."""
 
+import json
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch, call
@@ -176,6 +177,93 @@ class TestCheckCondition(unittest.TestCase):
         mock_gh.assert_called_once_with(
             ['pr', 'view', '7', '--json', 'reviewDecision'], 'owner/repo'
         )
+
+    @patch('conditions._has_unresolved_threads', return_value=False)
+    def test_no_unresolved_threads_true(self, mock_threads):
+        self.assertTrue(conditions.check_condition('no-unresolved-threads', 42))
+        mock_threads.assert_called_once_with(42, None)
+
+    @patch('conditions._has_unresolved_threads', return_value=True)
+    def test_no_unresolved_threads_false(self, mock_threads):
+        self.assertFalse(conditions.check_condition('no-unresolved-threads', 42))
+
+    @patch('conditions._has_unresolved_threads')
+    @patch('conditions._is_ci_passing')
+    @patch('conditions._is_approved')
+    def test_ready_to_merge_all_true(self, mock_approved, mock_ci, mock_threads):
+        mock_approved.return_value = True
+        mock_ci.return_value = True
+        mock_threads.return_value = False
+        self.assertTrue(conditions.check_condition('ready-to-merge', 42))
+
+    @patch('conditions._has_unresolved_threads')
+    @patch('conditions._is_ci_passing')
+    @patch('conditions._is_approved')
+    def test_ready_to_merge_unapproved(self, mock_approved, mock_ci, mock_threads):
+        mock_approved.return_value = False
+        mock_ci.return_value = True
+        mock_threads.return_value = False
+        self.assertFalse(conditions.check_condition('ready-to-merge', 42))
+
+    @patch('conditions._has_unresolved_threads')
+    @patch('conditions._is_ci_passing')
+    @patch('conditions._is_approved')
+    def test_ready_to_merge_unresolved_threads(self, mock_approved, mock_ci, mock_threads):
+        mock_approved.return_value = True
+        mock_ci.return_value = True
+        mock_threads.return_value = True
+        self.assertFalse(conditions.check_condition('ready-to-merge', 42))
+
+
+
+# ── conditions._has_unresolved_threads ───────────────────────────────────────
+
+class TestHasUnresolvedThreads(unittest.TestCase):
+
+    def _graphql_response(self, threads):
+        return json.dumps({
+            'data': {'repository': {'pullRequest': {
+                'reviewThreads': {'nodes': threads}
+            }}}
+        })
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_no_threads(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(0, self._graphql_response([]))
+        self.assertFalse(conditions._has_unresolved_threads(42, 'owner/repo'))
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_all_resolved(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(0, self._graphql_response([
+            {'isResolved': True},
+            {'isResolved': True},
+        ]))
+        self.assertFalse(conditions._has_unresolved_threads(42, 'owner/repo'))
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_one_unresolved(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(0, self._graphql_response([
+            {'isResolved': True},
+            {'isResolved': False},
+        ]))
+        self.assertTrue(conditions._has_unresolved_threads(42, 'owner/repo'))
+
+    @patch('subprocess.run')
+    @patch('conditions._repo_owner_name', return_value=('owner', 'repo'))
+    def test_graphql_failure_raises(self, mock_repo, mock_run):
+        mock_run.return_value = _FakeResult(1, '', 'some error')
+        with self.assertRaises(RuntimeError):
+            conditions._has_unresolved_threads(42, 'owner/repo')
+
+
+class _FakeResult:
+    def __init__(self, returncode, stdout='', stderr=''):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 # ── ghact main (CLI integration) ─────────────────────────────────────────────

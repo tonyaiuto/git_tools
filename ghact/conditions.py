@@ -12,7 +12,21 @@ KNOWN_CONDITIONS = frozenset({
     'draft',
     'ready',
     'mergeable',
+    'no-unresolved-threads',
+    'ready-to-merge',
 })
+
+_GRAPHQL_REVIEW_THREADS = """
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        nodes { isResolved }
+      }
+    }
+  }
+}
+"""
 
 
 def check_condition(condition, pr, repo=None):
@@ -35,6 +49,14 @@ def check_condition(condition, pr, repo=None):
         return not _is_draft(pr, repo)
     elif condition == 'mergeable':
         return _is_approved(pr, repo) and _is_ci_passing(pr, repo)
+    elif condition == 'no-unresolved-threads':
+        return not _has_unresolved_threads(pr, repo)
+    elif condition == 'ready-to-merge':
+        return (
+            _is_approved(pr, repo)
+            and _is_ci_passing(pr, repo)
+            and not _has_unresolved_threads(pr, repo)
+        )
     else:
         raise ValueError(
             f"Unknown condition {condition!r}. "
@@ -55,6 +77,15 @@ def _gh(args, repo=None):
             f"gh command failed ({' '.join(cmd)}):\n{result.stderr.strip()}"
         )
     return json.loads(result.stdout)
+
+
+def _repo_owner_name(repo):
+    """Return (owner, name) from an 'owner/repo' string or the current repo."""
+    if repo:
+        owner, name = repo.split('/', 1)
+        return owner, name
+    data = _gh(['repo', 'view', '--json', 'nameWithOwner'])
+    return data['nameWithOwner'].split('/', 1)
 
 
 def _is_approved(pr, repo):
@@ -78,3 +109,26 @@ def _is_ci_passing(pr, repo):
 def _is_draft(pr, repo):
     data = _gh(['pr', 'view', str(pr), '--json', 'isDraft'], repo)
     return bool(data.get('isDraft'))
+
+
+def _has_unresolved_threads(pr, repo):
+    owner, name = _repo_owner_name(repo)
+    result = subprocess.run(
+        [
+            'gh', 'api', 'graphql',
+            '-F', f'owner={owner}',
+            '-F', f'repo={name}',
+            '-F', f'pr={pr}',
+            '-f', f'query={_GRAPHQL_REVIEW_THREADS}',
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"GraphQL query failed:\n{result.stderr.strip()}"
+        )
+    data = json.loads(result.stdout)
+    threads = (
+        data['data']['repository']['pullRequest']['reviewThreads']['nodes']
+    )
+    return any(not t['isResolved'] for t in threads)
