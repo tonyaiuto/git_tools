@@ -2,11 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(bazelisk test)",
-      "Bash(gh pr view)"
+      "Bash(gh pr view)",
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.github.com)",
-      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:gist.github.com)"
     ]
   }
 }

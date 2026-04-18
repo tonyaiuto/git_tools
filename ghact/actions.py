@@ -41,6 +41,6 @@ def _gh(args, repo=None):
     cmd = ['gh'] + args
     if repo:
         cmd += ['--repo', repo]
-    result = subprocess.run(cmd, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"gh command failed: {' '.join(cmd)}")
