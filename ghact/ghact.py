@@ -36,8 +36,8 @@ def build_parser():
         help='Run after a delay: 2h, 90m, 1h30m',
     )
     parser.add_argument(
-        '--if', dest='condition', metavar='CONDITION',
-        help='Only act if condition is met: ' + ', '.join(sorted(conditions.KNOWN_CONDITIONS)),
+        '--if', dest='condition', metavar='CONDITION[,CONDITION...]',
+        help='Only act if all conditions are met: ' + ', '.join(sorted(conditions.KNOWN_CONDITIONS)),
     )
     parser.add_argument(
         '--repo', metavar='OWNER/REPO',
@@ -102,7 +102,7 @@ def main(argv=None):
         if not args.condition:
             parser.error("'pr' command requires --if CONDITION")
         try:
-            met = conditions.check_condition(args.condition, pr, args.repo)
+            met = conditions.check_conditions(args.condition, pr, args.repo)
         except ValueError as e:
             parser.error(str(e))
         except RuntimeError:
@@ -112,7 +112,7 @@ def main(argv=None):
     # ── Check condition ───────────────────────────────────────────────────────
     if args.condition:
         try:
-            met = conditions.check_condition(args.condition, pr, args.repo)
+            met = conditions.check_conditions(args.condition, pr, args.repo)
         except ValueError as e:
             parser.error(str(e))
         except RuntimeError as e:

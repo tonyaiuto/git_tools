@@ -1,14 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bazelisk test //:ghact_test --test_output=short 2>&1)",
-      "Bash(bazelisk test //:ghact_test 2>&1)",
+      "Bash(bazelisk test)",
+      "Bash(gh pr view)"
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.github.com)",
       "WebFetch(domain:gist.github.com)",
-      "Bash(gh pr view --json invalid-field 2>&1 | head -20)",
-      "Bash(gh pr view --json invalid-field 2>&1)"
     ]
   }
 }
