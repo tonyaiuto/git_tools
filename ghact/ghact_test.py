@@ -108,14 +108,14 @@ class TestSleepUntil(unittest.TestCase):
         self.assertIn('Sleeping until', mock_err.getvalue())
 
 
-# ── conditions.check_condition ───────────────────────────────────────────────
+# ── conditions._check_one ────────────────────────────────────────────────────
 
-class TestCheckCondition(unittest.TestCase):
+class TestCheckOne(unittest.TestCase):
 
     @patch('conditions._gh')
     def test_approved_true(self, mock_gh):
         mock_gh.return_value = {'reviewDecision': 'APPROVED'}
-        self.assertTrue(conditions.check_condition('approved', 42))
+        self.assertTrue(conditions._check_one('approved', 42, None))
         mock_gh.assert_called_once_with(
             ['pr', 'view', '42', '--json', 'reviewDecision'], None
         )
@@ -123,17 +123,17 @@ class TestCheckCondition(unittest.TestCase):
     @patch('conditions._gh')
     def test_approved_false(self, mock_gh):
         mock_gh.return_value = {'reviewDecision': 'REVIEW_REQUIRED'}
-        self.assertFalse(conditions.check_condition('approved', 42))
+        self.assertFalse(conditions._check_one('approved', 42, None))
 
     @patch('conditions._gh')
     def test_unapproved_true(self, mock_gh):
         mock_gh.return_value = {'reviewDecision': 'REVIEW_REQUIRED'}
-        self.assertTrue(conditions.check_condition('unapproved', 42))
+        self.assertTrue(conditions._check_one('unapproved', 42, None))
 
     @patch('conditions._gh')
     def test_unapproved_false_when_approved(self, mock_gh):
         mock_gh.return_value = {'reviewDecision': 'APPROVED'}
-        self.assertFalse(conditions.check_condition('unapproved', 42))
+        self.assertFalse(conditions._check_one('unapproved', 42, None))
 
     @patch('conditions._gh')
     def test_ci_passing_all_success(self, mock_gh):
@@ -141,7 +141,7 @@ class TestCheckCondition(unittest.TestCase):
             {'conclusion': 'SUCCESS'},
             {'conclusion': 'SKIPPED'},
         ]}
-        self.assertTrue(conditions.check_condition('passing', 42))
+        self.assertTrue(conditions._check_one('passing', 42, None))
 
     @patch('conditions._gh')
     def test_ci_passing_one_failure(self, mock_gh):
@@ -149,70 +149,81 @@ class TestCheckCondition(unittest.TestCase):
             {'conclusion': 'SUCCESS'},
             {'conclusion': 'FAILURE'},
         ]}
-        self.assertFalse(conditions.check_condition('passing', 42))
+        self.assertFalse(conditions._check_one('passing', 42, None))
 
     @patch('conditions._gh')
     def test_ci_passing_no_checks_is_false(self, mock_gh):
         mock_gh.return_value = {'statusCheckRollup': []}
-        self.assertFalse(conditions.check_condition('passing', 42))
+        self.assertFalse(conditions._check_one('passing', 42, None))
 
     @patch('conditions._gh')
     def test_draft(self, mock_gh):
         mock_gh.return_value = {'isDraft': True}
-        self.assertTrue(conditions.check_condition('draft', 42))
+        self.assertTrue(conditions._check_one('draft', 42, None))
 
     @patch('conditions._gh')
     def test_ready(self, mock_gh):
         mock_gh.return_value = {'isDraft': False}
-        self.assertTrue(conditions.check_condition('ready', 42))
-
-    def test_unknown_condition_raises(self):
-        with self.assertRaises(ValueError):
-            conditions.check_condition('bogus', 42)
-
-    @patch('conditions._gh')
-    def test_repo_forwarded(self, mock_gh):
-        mock_gh.return_value = {'reviewDecision': 'APPROVED'}
-        conditions.check_condition('approved', 7, repo='owner/repo')
-        mock_gh.assert_called_once_with(
-            ['pr', 'view', '7', '--json', 'reviewDecision'], 'owner/repo'
-        )
+        self.assertTrue(conditions._check_one('ready', 42, None))
 
     @patch('conditions._has_unresolved_threads', return_value=False)
     def test_no_unresolved_threads_true(self, mock_threads):
-        self.assertTrue(conditions.check_condition('no-unresolved-threads', 42))
+        self.assertTrue(conditions._check_one('no-unresolved-threads', 42, None))
         mock_threads.assert_called_once_with(42, None)
 
     @patch('conditions._has_unresolved_threads', return_value=True)
     def test_no_unresolved_threads_false(self, mock_threads):
-        self.assertFalse(conditions.check_condition('no-unresolved-threads', 42))
+        self.assertFalse(conditions._check_one('no-unresolved-threads', 42, None))
 
-    @patch('conditions._has_unresolved_threads')
-    @patch('conditions._is_ci_passing')
-    @patch('conditions._is_approved')
-    def test_ready_to_merge_all_true(self, mock_approved, mock_ci, mock_threads):
-        mock_approved.return_value = True
-        mock_ci.return_value = True
-        mock_threads.return_value = False
-        self.assertTrue(conditions.check_condition('ready-to-merge', 42))
+    def test_unknown_condition_raises(self):
+        with self.assertRaises(ValueError):
+            conditions._check_one('bogus', 42, None)
 
-    @patch('conditions._has_unresolved_threads')
-    @patch('conditions._is_ci_passing')
-    @patch('conditions._is_approved')
-    def test_ready_to_merge_unapproved(self, mock_approved, mock_ci, mock_threads):
-        mock_approved.return_value = False
-        mock_ci.return_value = True
-        mock_threads.return_value = False
-        self.assertFalse(conditions.check_condition('ready-to-merge', 42))
+    @patch('conditions._gh')
+    def test_repo_forwarded(self, mock_gh):
+        mock_gh.return_value = {'reviewDecision': 'APPROVED'}
+        conditions._check_one('approved', 7, 'owner/repo')
+        mock_gh.assert_called_once_with(
+            ['pr', 'view', '7', '--json', 'reviewDecision'], 'owner/repo'
+        )
 
-    @patch('conditions._has_unresolved_threads')
-    @patch('conditions._is_ci_passing')
-    @patch('conditions._is_approved')
-    def test_ready_to_merge_unresolved_threads(self, mock_approved, mock_ci, mock_threads):
-        mock_approved.return_value = True
-        mock_ci.return_value = True
-        mock_threads.return_value = True
-        self.assertFalse(conditions.check_condition('ready-to-merge', 42))
+
+# ── conditions.check_conditions ──────────────────────────────────────────────
+
+class TestCheckConditions(unittest.TestCase):
+
+    @patch('conditions._check_one', return_value=True)
+    def test_single_condition_true(self, mock_one):
+        self.assertTrue(conditions.check_conditions('approved', 42))
+        mock_one.assert_called_once_with('approved', 42, None)
+
+    @patch('conditions._check_one', return_value=False)
+    def test_single_condition_false(self, mock_one):
+        self.assertFalse(conditions.check_conditions('approved', 42))
+
+    @patch('conditions._check_one', return_value=True)
+    def test_multiple_all_true(self, mock_one):
+        self.assertTrue(conditions.check_conditions('approved,passing,ready', 42))
+        self.assertEqual(mock_one.call_count, 3)
+
+    @patch('conditions._check_one')
+    def test_multiple_short_circuits_on_false(self, mock_one):
+        mock_one.side_effect = [True, False]
+        self.assertFalse(conditions.check_conditions('approved,passing,ready', 42))
+        self.assertEqual(mock_one.call_count, 2)
+
+    @patch('conditions._check_one')
+    def test_whitespace_around_commas(self, mock_one):
+        mock_one.return_value = True
+        conditions.check_conditions('approved, passing', 42)
+        mock_one.assert_any_call('approved', 42, None)
+        mock_one.assert_any_call('passing', 42, None)
+
+    @patch('conditions._check_one')
+    def test_unknown_condition_raises(self, mock_one):
+        mock_one.side_effect = ValueError('Unknown condition')
+        with self.assertRaises(ValueError):
+            conditions.check_conditions('bogus', 42)
 
 
 
@@ -282,7 +293,7 @@ class TestMain(unittest.TestCase):
         ghact.main(['add-comment', '10', 'hello world'])
         mock_comment.assert_called_once_with(10, 'hello world', None)
 
-    @patch('conditions.check_condition', return_value=False)
+    @patch('conditions.check_conditions', return_value=False)
     @patch('actions.add_label')
     def test_condition_not_met_skips_action(self, mock_add, mock_cond):
         import ghact
@@ -290,7 +301,7 @@ class TestMain(unittest.TestCase):
         mock_cond.assert_called_once_with('approved', 42, None)
         mock_add.assert_not_called()
 
-    @patch('conditions.check_condition', return_value=True)
+    @patch('conditions.check_conditions', return_value=True)
     @patch('actions.add_label')
     def test_condition_met_runs_action(self, mock_add, mock_cond):
         import ghact
@@ -308,21 +319,21 @@ class TestMain(unittest.TestCase):
 
 class TestPrCommand(unittest.TestCase):
 
-    @patch('conditions.check_condition', return_value=True)
+    @patch('conditions.check_conditions', return_value=True)
     def test_condition_true_exits_0(self, mock_cond):
         import ghact
         with self.assertRaises(SystemExit) as cm:
             ghact.main(['--if', 'approved', 'pr', '42'])
         self.assertEqual(cm.exception.code, 0)
 
-    @patch('conditions.check_condition', return_value=False)
+    @patch('conditions.check_conditions', return_value=False)
     def test_condition_false_exits_1(self, mock_cond):
         import ghact
         with self.assertRaises(SystemExit) as cm:
             ghact.main(['--if', 'approved', 'pr', '42'])
         self.assertEqual(cm.exception.code, 1)
 
-    @patch('conditions.check_condition', return_value=True)
+    @patch('conditions.check_conditions', return_value=True)
     def test_no_output(self, mock_cond):
         import ghact
         import io

@@ -11,9 +11,7 @@ KNOWN_CONDITIONS = frozenset({
     'failing',
     'draft',
     'ready',
-    'mergeable',
     'no-unresolved-threads',
-    'ready-to-merge',
 })
 
 _GRAPHQL_REVIEW_THREADS = """
@@ -29,12 +27,21 @@ query($owner: String!, $repo: String!, $pr: Int!) {
 """
 
 
-def check_condition(condition, pr, repo=None):
-    """Return True if PR satisfies condition, False otherwise.
+def check_conditions(conditions_str, pr, repo=None):
+    """Return True if PR satisfies all comma-separated conditions.
 
     Raises ValueError for unknown conditions.
     Raises RuntimeError if the gh CLI call fails.
     """
+    for condition in conditions_str.split(','):
+        condition = condition.strip()
+        if not _check_one(condition, pr, repo):
+            return False
+    return True
+
+
+def _check_one(condition, pr, repo):
+    """Evaluate a single condition. Raises ValueError if unknown."""
     if condition == 'approved':
         return _is_approved(pr, repo)
     elif condition == 'unapproved':
@@ -47,16 +54,8 @@ def check_condition(condition, pr, repo=None):
         return _is_draft(pr, repo)
     elif condition == 'ready':
         return not _is_draft(pr, repo)
-    elif condition == 'mergeable':
-        return _is_approved(pr, repo) and _is_ci_passing(pr, repo)
     elif condition == 'no-unresolved-threads':
         return not _has_unresolved_threads(pr, repo)
-    elif condition == 'ready-to-merge':
-        return (
-            _is_approved(pr, repo)
-            and _is_ci_passing(pr, repo)
-            and not _has_unresolved_threads(pr, repo)
-        )
     else:
         raise ValueError(
             f"Unknown condition {condition!r}. "
