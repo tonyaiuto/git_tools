@@ -12,3 +12,6 @@ install:
 
 clean:
 	rm -rf __pycache__
+
+sync:
+	cd .. ; $(MAKE) -$(MAKEFLAGS) sync
