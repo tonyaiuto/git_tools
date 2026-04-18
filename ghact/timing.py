@@ -74,7 +74,11 @@ def sleep_until(target, verbose=False):
             f"({delta / 60:.1f} min from now)...",
             file=sys.stderr,
         )
-    time.sleep(delta)
+    while True:
+        delta = (target - datetime.now()).total_seconds()
+        if delta <= 0:
+            return
+        time.sleep(delta)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
