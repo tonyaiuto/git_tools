@@ -35,10 +35,20 @@ py_binary(
 )
 
 py_test(
+    name = "timing_test",
+    srcs = ["timing_test.py"],
+    deps = [":timing"],
+)
+
+py_test(
+    name = "conditions_test",
+    srcs = ["conditions_test.py"],
+    deps = [":conditions"],
+)
+
+py_test(
     name = "ghact_test",
-    srcs = [
-        "ghact_test.py",
-    ],
+    srcs = ["ghact_test.py"],
     deps = [
         ":actions",
         ":conditions",
