@@ -8,7 +8,8 @@
       "WebFetch(domain:docs.github.com)",
       "WebFetch(domain:gist.github.com)",
       "Bash(bazelisk test *)",
-      "Bash(python3 -m unittest timing_test conditions_test ghact_test -v)"
+      "Bash(python3 -m unittest timing_test conditions_test ghact_test -v)",
+      "Bash(python3 *)"
     ]
   }
 }
