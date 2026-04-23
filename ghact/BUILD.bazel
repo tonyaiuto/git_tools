@@ -15,6 +15,11 @@ py_library(
     srcs = ["actions.py"],
 )
 
+py_library(
+    name = "version",
+    srcs = ["version.py"],
+)
+
 py_binary(
     name = "ghact",
     srcs = [
@@ -25,6 +30,7 @@ py_binary(
         ":actions",
         ":conditions",
         ":timing",
+        ":version",
     ],
 )
 
@@ -38,5 +44,6 @@ py_test(
         ":conditions",
         ":ghact",
         ":timing",
+        ":version",
     ],
 )

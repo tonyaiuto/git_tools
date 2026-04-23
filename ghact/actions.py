@@ -34,6 +34,22 @@ def close(pr, repo=None):
     _gh(['pr', 'close', str(pr)], repo)
 
 
+def ready(pr, repo=None):
+    """Mark a draft PR as ready for review."""
+    print(f"Marking PR #{pr} as ready for review", file=sys.stderr)
+    _gh(['pr', 'ready', str(pr)], repo)
+
+
+def run_gh(gh_args, repo=None):
+    """Pass args directly to gh, injecting --repo if known. Streams output."""
+    cmd = ['gh'] + list(gh_args)
+    if repo:
+        cmd += ['--repo', repo]
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        raise RuntimeError(f"gh command failed")
+
+
 # ── gh helper ─────────────────────────────────────────────────────────────────
 
 def _gh(args, repo=None):

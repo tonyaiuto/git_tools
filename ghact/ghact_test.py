@@ -91,20 +91,24 @@ class TestParseAfter(unittest.TestCase):
 
 class TestSleepUntil(unittest.TestCase):
 
-    @patch('time.sleep')
-    def test_silent_by_default(self, mock_sleep):
+    def test_silent_by_default(self):
         import io
-        future = datetime.now() + timedelta(seconds=60)
+        past = datetime.now() - timedelta(seconds=1)
         with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
-            timing.sleep_until(future)
+            timing.sleep_until(past)
         self.assertEqual(mock_err.getvalue(), '')
 
     @patch('time.sleep')
     def test_verbose_prints(self, mock_sleep):
         import io
-        future = datetime.now() + timedelta(seconds=60)
-        with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
-            timing.sleep_until(future, verbose=True)
+        now = datetime.now()
+        future = now + timedelta(seconds=60)
+        # First now() call: before target (so verbose message prints).
+        # Second now() call (in the while loop): past target so loop exits.
+        with patch('timing.datetime') as mock_dt:
+            mock_dt.now.side_effect = [now, future + timedelta(seconds=1)]
+            with patch('sys.stderr', new_callable=io.StringIO) as mock_err:
+                timing.sleep_until(future, verbose=True)
         self.assertIn('Sleeping until', mock_err.getvalue())
 
 
@@ -277,6 +281,36 @@ class _FakeResult:
         self.stderr = stderr
 
 
+# ── ghact._parse_pr_ref ───────────────────────────────────────────────────────
+
+class TestParsePrRef(unittest.TestCase):
+
+    def setUp(self):
+        import ghact
+        self.parse = ghact._parse_pr_ref
+
+    def test_plain_number(self):
+        self.assertEqual(self.parse('42', None), (42, None))
+
+    def test_plain_number_with_repo(self):
+        self.assertEqual(self.parse('42', 'owner/repo'), (42, 'owner/repo'))
+
+    def test_url_extracts_pr_and_repo(self):
+        self.assertEqual(
+            self.parse('https://github.com/owner/repo/pull/42', None),
+            (42, 'owner/repo'),
+        )
+
+    def test_url_repo_override_wins(self):
+        self.assertEqual(
+            self.parse('https://github.com/owner/repo/pull/42', 'other/repo'),
+            (42, 'other/repo'),
+        )
+
+    def test_invalid_returns_none(self):
+        self.assertEqual(self.parse('not-a-pr', None), (None, None))
+
+
 # ── ghact main (CLI integration) ─────────────────────────────────────────────
 
 class TestMain(unittest.TestCase):
@@ -284,20 +318,20 @@ class TestMain(unittest.TestCase):
     @patch('actions.add_label')
     def test_add_label_no_condition(self, mock_add):
         import ghact
-        ghact.main(['add-label', '42', 'my-label'])
+        ghact.main(['42', 'add-label', 'my-label'])
         mock_add.assert_called_once_with(42, 'my-label', None)
 
     @patch('actions.add_comment')
     def test_add_comment(self, mock_comment):
         import ghact
-        ghact.main(['add-comment', '10', 'hello world'])
+        ghact.main(['10', 'add-comment', 'hello world'])
         mock_comment.assert_called_once_with(10, 'hello world', None)
 
     @patch('conditions.check_conditions', return_value=False)
     @patch('actions.add_label')
     def test_condition_not_met_skips_action(self, mock_add, mock_cond):
         import ghact
-        ghact.main(['--if', 'approved', 'add-label', '42', 'lgtm'])
+        ghact.main(['--if', 'approved', '42', 'add-label', 'lgtm'])
         mock_cond.assert_called_once_with('approved', 42, None)
         mock_add.assert_not_called()
 
@@ -305,14 +339,44 @@ class TestMain(unittest.TestCase):
     @patch('actions.add_label')
     def test_condition_met_runs_action(self, mock_add, mock_cond):
         import ghact
-        ghact.main(['--if', 'approved', 'add-label', '42', 'lgtm'])
+        ghact.main(['--if', 'approved', '42', 'add-label', 'lgtm'])
         mock_add.assert_called_once_with(42, 'lgtm', None)
 
     @patch('actions.add_label')
     def test_repo_forwarded(self, mock_add):
         import ghact
-        ghact.main(['--repo', 'owner/repo', 'add-label', '5', 'foo'])
+        ghact.main(['--repo', 'owner/repo', '5', 'add-label', 'foo'])
         mock_add.assert_called_once_with(5, 'foo', 'owner/repo')
+
+    @patch('actions.merge')
+    def test_url_extracts_repo(self, mock_merge):
+        import ghact
+        ghact.main(['https://github.com/owner/repo/pull/42', 'merge'])
+        mock_merge.assert_called_once_with(42, 'owner/repo')
+
+    @patch('actions.merge')
+    def test_repo_flag_overrides_url(self, mock_merge):
+        import ghact
+        ghact.main(['--repo', 'other/repo', 'https://github.com/owner/repo/pull/42', 'merge'])
+        mock_merge.assert_called_once_with(42, 'other/repo')
+
+    @patch('actions.ready')
+    def test_ready_command(self, mock_ready):
+        import ghact
+        ghact.main(['42', 'ready'])
+        mock_ready.assert_called_once_with(42, None)
+
+    @patch('actions.run_gh')
+    def test_gh_passthrough(self, mock_run):
+        import ghact
+        ghact.main(['42', 'gh', 'pr', 'view', '--json', 'title'])
+        mock_run.assert_called_once_with(['pr', 'view', '--json', 'title'], None)
+
+    @patch('actions.run_gh')
+    def test_gh_passthrough_injects_repo_from_url(self, mock_run):
+        import ghact
+        ghact.main(['https://github.com/owner/repo/pull/42', 'gh', 'pr', 'view'])
+        mock_run.assert_called_once_with(['pr', 'view'], 'owner/repo')
 
 
 # ── pr subcommand ─────────────────────────────────────────────────────────────
@@ -323,14 +387,14 @@ class TestPrCommand(unittest.TestCase):
     def test_condition_true_exits_0(self, mock_cond):
         import ghact
         with self.assertRaises(SystemExit) as cm:
-            ghact.main(['--if', 'approved', 'pr', '42'])
+            ghact.main(['--if', 'approved', '42', 'pr'])
         self.assertEqual(cm.exception.code, 0)
 
     @patch('conditions.check_conditions', return_value=False)
     def test_condition_false_exits_1(self, mock_cond):
         import ghact
         with self.assertRaises(SystemExit) as cm:
-            ghact.main(['--if', 'approved', 'pr', '42'])
+            ghact.main(['--if', 'approved', '42', 'pr'])
         self.assertEqual(cm.exception.code, 1)
 
     @patch('conditions.check_conditions', return_value=True)
@@ -340,14 +404,14 @@ class TestPrCommand(unittest.TestCase):
         with self.assertRaises(SystemExit):
             with patch('sys.stdout', new_callable=io.StringIO) as mock_out, \
                  patch('sys.stderr', new_callable=io.StringIO) as mock_err:
-                ghact.main(['--if', 'approved', 'pr', '42'])
+                ghact.main(['--if', 'approved', '42', 'pr'])
                 self.assertEqual(mock_out.getvalue(), '')
                 self.assertEqual(mock_err.getvalue(), '')
 
     def test_missing_condition_is_error(self):
         import ghact
         with self.assertRaises(SystemExit) as cm:
-            ghact.main(['pr', '42'])
+            ghact.main(['42', 'pr'])
         self.assertNotEqual(cm.exception.code, 0)
 
 
